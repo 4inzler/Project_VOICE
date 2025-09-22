@@ -1,0 +1,34 @@
+[project]
+name = "project-voice"
+version = "0.1.0"
+description = "Arch Linux optimized RVC pipeline for feminine voice synthesis"
+authors = [{name = "Project VOICE"}]
+dependencies = [
+  "torch",
+  "torchaudio",
+  "numpy",
+  "soundfile",
+  "librosa",
+  "pyloudnorm",
+  "noisereduce",
+  "webrtcvad",
+  "tqdm",
+  "typer",
+  "gradio",
+  "pyrubberband",
+  "scipy",
+  "rmvpe @ git+https://github.com/rmvpe-team/RMVPE.git",
+  "crepe",
+  "speechbrain",
+  "sounddevice",
+]
+
+[project.optional-dependencies]
+deploy = [
+  "onnx",
+  "onnxruntime-gpu",
+  "tensorrt",
+]
+
+[project.scripts]
+project-voice = "project_voice.cli:app"
