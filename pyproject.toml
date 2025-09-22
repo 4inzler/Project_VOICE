@@ -10,6 +10,7 @@ dependencies = [
   "pyloudnorm",
   "noisereduce",
   "webrtcvad",
+  "setuptools",
   "tqdm",
   "requests",
   "typer",
