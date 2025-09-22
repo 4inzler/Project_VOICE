@@ -36,6 +36,21 @@ pip install -e .[deploy]
 
 ## Dataset preparation
 
+### Use an openly licensed baseline voice
+
+If you do not have a consenting dataset prepared, Project VOICE can fetch one
+for you. The CMU Arctic SLT speaker (~70 minutes of female US English speech)
+is a good starting point:
+
+```bash
+project-voice dataset acquire --name cmu_arctic_slt --raw-audio data/raw/cmu_slt
+```
+
+To browse other options (e.g., the much longer LJ Speech corpus), run
+`project-voice dataset list`. All downloads are cached in
+`~/.cache/project_voice` and resampled to 48 kHz in the destination folder. The
+command also writes `SOURCE.json` and `CONSENT.txt` to document provenance.
+
 1. Gather 60–120 minutes of clean, single-speaker, **consensual** female audio at 48 kHz.
 2. Place WAV files inside `data/raw/`.
 3. Run preprocessing:

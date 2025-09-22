@@ -9,6 +9,7 @@ import torch
 import typer
 
 from .config import ProjectVoiceConfig
+from .data import acquire_dataset, list_datasets
 from .dataset import SegmentMetadata, filter_segments
 from .inference import RealTimeEngine
 from .preprocess import preprocess_dataset
@@ -16,6 +17,33 @@ from .trainer import ProjectVoiceTrainer
 from .utils.guardrails import validate_prompt
 
 app = typer.Typer(help="Project VOICE command line interface")
+dataset_app = typer.Typer(help="Utilities for sourcing training audio")
+app.add_typer(dataset_app, name="dataset")
+
+
+@dataset_app.command("list")
+def dataset_list() -> None:
+    """List available openly licensed datasets."""
+
+    for dataset in list_datasets():
+        typer.echo(
+            f"{dataset.name}: {dataset.speaker} (~{dataset.minutes:.0f} min, {dataset.license})\n"
+            f"  {dataset.description}"
+        )
+
+
+@dataset_app.command("acquire")
+def dataset_acquire(
+    name: str = typer.Option("cmu_arctic_slt", help="Dataset identifier"),
+    raw_audio: Path = typer.Option(..., help="Destination directory for raw WAVs"),
+    cache_dir: Optional[Path] = typer.Option(None, help="Cache directory for archives"),
+    sample_rate: int = typer.Option(48_000, help="Target sample rate"),
+    skip_existing: bool = typer.Option(True, help="Skip WAVs that already exist"),
+) -> None:
+    """Download and normalise an open female voice dataset."""
+
+    acquire_dataset(name, raw_audio, cache_dir=cache_dir, sample_rate=sample_rate, skip_existing=skip_existing)
+    typer.echo(f"Dataset '{name}' prepared in {raw_audio}")
 
 
 @app.command()
