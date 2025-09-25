@@ -1,6 +1,7 @@
 """Gradio GUI exposing presets and device selection."""
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import List
 
@@ -10,6 +11,8 @@ import torch
 from .config import ProjectVoiceConfig
 from .inference import RealTimeEngine
 from .utils.guardrails import validate_prompt
+
+_active_streams: List[threading.Thread] = []
 
 
 def build_interface() -> gr.Blocks:
@@ -38,8 +41,12 @@ def build_interface() -> gr.Blocks:
                 return "Please confirm consent in the prompt"
             cfg.inference.device = None if device_choice == "auto" else device_choice
             engine = RealTimeEngine(cfg, Path(file.name))
-            engine.stream(next(p for p in cfg.presets if p.name == preset_name))
-            return "Streaming started"
+            preset_obj = next(p for p in cfg.presets if p.name == preset_name)
+
+            thread = threading.Thread(target=engine.stream, args=(preset_obj,), daemon=True)
+            thread.start()
+            _active_streams.append(thread)
+            return "Streaming started in background"
 
         run = gr.Button("Start Real-Time Streaming")
         run.click(run_inference, inputs=[checkpoint, preset, device, prompt], outputs=status)

@@ -111,7 +111,10 @@ def realtime(
     if device_str:
         cfg.inference.device = device_str
     engine = RealTimeEngine(cfg, checkpoint)
-    engine.stream(preset)
+    try:
+        engine.stream(preset)
+    finally:
+        typer.echo("Real-time streaming terminated")
 
 
 @app.command()

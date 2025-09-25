@@ -70,13 +70,13 @@ Audio is resampled to 48 kHz, segmented with VAD, normalized to −23 LUFS, ligh
    ```
 
 ## Real-time inference
-Launch the real-time streaming GUI or CLI with low-latency defaults tuned for the RTX 4070 SUPER:
+The real-time engine now streams asynchronously: audio capture, GPU inference, and playback run in decoupled queues so the HuBERT/RMVPE/RVC stack no longer blocks I/O callbacks. Launch either the Gradio UI or the Typer CLI:
 ```sh
-project-voice gui --preset default
-project-voice realtime --input-device 1 --output-device 3 --preset default
+python -m project_voice.gui
+project-voice realtime --checkpoint checkpoints/latest.pt --preset "Default Feminine"
 ```
 
-The default preset applies +2.5 semitone pitch shift, 1.08× formant lift, breathiness 0.15, de-ess 0.35, harmonic tilt +0.1, and a limiter at −1 dBTP. You can create custom presets in YAML to match different targets.
+The default preset applies +2.5 semitone pitch shift, 1.08× formant lift, breathiness 0.15, de-ess 0.35, harmonic tilt +0.1, and a limiter at −1 dBTP. You can create custom presets in `pyproject.toml` or extend `ProjectVoiceConfig` for additional real-time profiles. Keyboard interrupts cleanly stop the async stream without leaving dangling threads.
 
 ## Ethical guardrails
 Project VOICE enforces consent reminders and blocks obviously disallowed celebrity voices by default. Optional ultrasonic watermarking tags exports for provenance. Always respect local laws and the preferences of the recorded speaker.

@@ -1,17 +1,19 @@
 """Real-time inference utilities for Project VOICE."""
 from __future__ import annotations
 
+import asyncio
+import queue
 import threading
-from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from pathlib import Path
-from typing import Dict, Iterable, Optional
 
 import numpy as np
 import sounddevice as sd
 import torch
 import torch.nn.functional as F
 
-from .config import InferenceConfig, Preset, ProjectVoiceConfig
+from .config import Preset, ProjectVoiceConfig
 from .models.encoders import HuBERTSoftEncoder
 from .models.pitch import PitchExtractor
 from .models.rvc import RVCGenerator
@@ -24,15 +26,6 @@ from .utils.audio import (
     harmonic_tilt,
     pitch_shift,
 )
-
-
-@dataclass
-class InferenceState:
-    generator: RVCGenerator
-    encoder: HuBERTSoftEncoder
-    pitch: PitchExtractor
-    vocoder: Vocoder
-    device: torch.device
 
 
 class RealTimeEngine:
@@ -59,6 +52,7 @@ class RealTimeEngine:
             ),
             device,
         )
+        self._executor = ThreadPoolExecutor(max_workers=1)
 
     def process_buffer(self, audio: np.ndarray, preset: Preset) -> np.ndarray:
         waveform = torch.from_numpy(audio).float().to(self.device)
@@ -77,28 +71,91 @@ class RealTimeEngine:
         output = add_breathiness(output, preset.breathiness)
         output = harmonic_tilt(output, self.cfg.inference.sample_rate, preset.harmonic_tilt)
         output = brickwall_limiter(output, preset.limiter_ceiling)
-        return output
+        return output.astype(np.float32)
 
-    def stream(self, preset: Preset) -> None:
+    async def process_buffer_async(self, audio: np.ndarray, preset: Preset) -> np.ndarray:
+        """Asynchronously run the conversion stack for a mono buffer."""
+
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._executor, self.process_buffer, audio, preset)
+
+    async def stream_async(self, preset: Preset) -> None:
+        """Stream audio asynchronously with background inference workers."""
+
+        loop = asyncio.get_running_loop()
         buffer_size = int(self.cfg.inference.sample_rate * (self.cfg.inference.frame_ms / 1000.0))
+        input_queue: "queue.Queue[np.ndarray]" = queue.Queue(maxsize=8)
+        output_queue: "queue.Queue[np.ndarray]" = queue.Queue(maxsize=8)
+        stop_signal = threading.Event()
 
         def callback(indata, outdata, frames, time, status):  # type: ignore[override]
             if status:
                 print(status)
-            audio = indata[:, 0]
-            processed = self.process_buffer(audio, preset)
+            try:
+                input_queue.put_nowait(indata[:, 0].copy())
+            except queue.Full:
+                pass
+            try:
+                processed = output_queue.get_nowait()
+            except queue.Empty:
+                processed = np.zeros(frames, dtype=np.float32)
             if len(processed) < frames:
                 processed = np.pad(processed, (0, frames - len(processed)))
             outdata[:, 0] = processed[:frames]
 
-        with sd.Stream(
-            samplerate=self.cfg.inference.sample_rate,
-            blocksize=buffer_size,
-            dtype="float32",
-            channels=1,
-            callback=callback,
-        ):
-            threading.Event().wait()
+        async def worker() -> None:
+            try:
+                while not stop_signal.is_set():
+                    audio = await loop.run_in_executor(None, input_queue.get)
+                    processed = await self.process_buffer_async(audio, preset)
+                    await loop.run_in_executor(None, output_queue.put, processed)
+            except asyncio.CancelledError:
+                stop_signal.set()
+                raise
+
+        def audio_loop() -> None:
+            with sd.Stream(
+                samplerate=self.cfg.inference.sample_rate,
+                blocksize=buffer_size,
+                dtype="float32",
+                channels=1,
+                callback=callback,
+            ):
+                stop_signal.wait()
+
+        worker_task = asyncio.create_task(worker())
+        stream_task = asyncio.create_task(asyncio.to_thread(audio_loop))
+
+        wait_forever = loop.create_future()
+        try:
+            await wait_forever
+        except asyncio.CancelledError:
+            pass
+        finally:
+            stop_signal.set()
+            with suppress(queue.Full):
+                input_queue.put_nowait(np.zeros(buffer_size, dtype=np.float32))
+            worker_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await worker_task
+            stream_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await stream_task
+
+    def stream(self, preset: Preset) -> None:
+        """Compatibility wrapper around :meth:`stream_async` for sync callers."""
+
+        try:
+            asyncio.run(self.stream_async(preset))
+        except KeyboardInterrupt:
+            pass
+        finally:
+            self._executor.shutdown(wait=False)
+
+    def close(self) -> None:
+        """Explicitly release background resources."""
+
+        self._executor.shutdown(wait=False)
 
 
 __all__ = ["RealTimeEngine"]
