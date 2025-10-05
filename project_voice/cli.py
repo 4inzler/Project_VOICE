@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 from typing import Optional
 
-import torch
 import typer
 
 from .config import ProjectVoiceConfig
@@ -68,6 +67,8 @@ def train(
 ) -> None:
     """Train the Project VOICE model."""
 
+    import torch
+
     cfg = ProjectVoiceConfig()
     segments_json = json.loads(metadata_path.read_text(encoding="utf8"))
     segments = [
@@ -87,6 +88,8 @@ def realtime(
     device_str: Optional[str] = typer.Option(None, help="Torch device"),
 ) -> None:
     """Launch the real-time inference engine."""
+
+    import torch
 
     cfg = ProjectVoiceConfig()
     preset = next((preset for preset in cfg.presets if preset.name == preset_name), None)
