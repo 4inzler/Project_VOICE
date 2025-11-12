@@ -10,8 +10,9 @@ import typer
 from .config import ProjectVoiceConfig
 from .data import acquire_dataset, list_datasets
 from .dataset import SegmentMetadata, filter_segments
+from .inference import RealTimeEngine
 from .preprocess import preprocess_dataset
-from .quickstart import run_quickstart
+from .trainer import ProjectVoiceTrainer
 from .utils.guardrails import validate_prompt
 
 app = typer.Typer(help="Project VOICE command line interface")
@@ -66,14 +67,7 @@ def train(
 ) -> None:
     """Train the Project VOICE model."""
 
-    try:
-        import torch
-    except ImportError as exc:  # pragma: no cover - exercised in runtime environments
-        raise typer.BadParameter(
-            "Training requires PyTorch and related extras. Install with `pip install .[full]`."
-        ) from exc
-
-    from .trainer import ProjectVoiceTrainer
+    import torch
 
     cfg = ProjectVoiceConfig()
     segments_json = json.loads(metadata_path.read_text(encoding="utf8"))
@@ -95,14 +89,7 @@ def realtime(
 ) -> None:
     """Launch the real-time inference engine."""
 
-    try:
-        import torch  # noqa: F401  # imported for side effects / availability
-    except ImportError as exc:  # pragma: no cover
-        raise typer.BadParameter(
-            "Real-time inference requires the 'full' extras. Install with `pip install .[full]`."
-        ) from exc
-
-    from .inference import RealTimeEngine
+    import torch
 
     cfg = ProjectVoiceConfig()
     preset = next((preset for preset in cfg.presets if preset.name == preset_name), None)
@@ -111,23 +98,7 @@ def realtime(
     if device_str:
         cfg.inference.device = device_str
     engine = RealTimeEngine(cfg, checkpoint)
-    try:
-        engine.stream(preset)
-    finally:
-        typer.echo("Real-time streaming terminated")
-
-
-@app.command()
-def quickstart(
-    output_dir: Path = typer.Option(Path("quickstart"), file_okay=False, help="Where to place demo artifacts"),
-    sample_rate: int = typer.Option(48_000, help="Sample rate for the synthetic demo"),
-) -> None:
-    """Generate a synthetic dataset and export a converted demo clip."""
-
-    summary = run_quickstart(output_dir, sample_rate=sample_rate)
-    typer.echo("Quickstart assets created:")
-    for key, value in summary.items():
-        typer.echo(f"  {key}: {value}")
+    engine.stream(preset)
 
 
 @app.command()

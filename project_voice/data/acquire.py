@@ -8,10 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, Optional
 
-import librosa
-import requests
-import soundfile as sf
-from tqdm import tqdm
 
 CHUNK_SIZE = 1 << 20  # 1 MiB
 
@@ -69,6 +65,9 @@ def list_datasets() -> Iterable[DatasetSource]:
 def _download(url: str, destination: Path) -> None:
     """Download a URL with progress reporting."""
 
+    import requests
+    from tqdm import tqdm
+
     destination.parent.mkdir(parents=True, exist_ok=True)
     with requests.get(url, stream=True, timeout=30) as response:
         response.raise_for_status()
@@ -111,10 +110,53 @@ def _iter_wavs(directory: Path) -> Iterator[Path]:
 
 
 def _normalise_audio(source_path: Path, target_path: Path, sample_rate: int) -> None:
-    """Load, resample, and save an audio file as mono 48 kHz WAV."""
+    """Load, resample, and save an audio file as mono WAV.
 
-    audio, _ = librosa.load(source_path, sr=sample_rate, mono=True)
-    sf.write(target_path, audio, sample_rate)
+    The previous implementation depended on :mod:`librosa`, which pulls in a
+    sizeable dependency tree and is not required for the light-weight dataset
+    preparation performed here.  Using :mod:`soundfile` alongside a small
+    NumPy-based resampling routine keeps the function easy to install while
+    preserving resampling quality.
+    """
+
+    try:
+        import numpy as np
+    except ModuleNotFoundError as exc:  # pragma: no cover - exercised in CLI smoke test
+        raise ModuleNotFoundError(
+            "NumPy is required for dataset preparation. Install it with 'pip install numpy'."
+        ) from exc
+
+    try:
+        import soundfile as sf
+    except ModuleNotFoundError as exc:  # pragma: no cover - exercised in CLI smoke test
+        raise ModuleNotFoundError(
+            "soundfile is required for dataset preparation. Install it with 'pip install soundfile'."
+        ) from exc
+
+    audio, source_rate = sf.read(source_path)
+    if audio.size == 0:
+        raise RuntimeError(f"{source_path} appears to be empty")
+
+    if audio.ndim > 1:
+        audio = np.mean(audio, axis=1)
+
+    if source_rate != sample_rate:
+        if source_rate <= 0:
+            raise RuntimeError(f"Invalid sample rate {source_rate} in {source_path}")
+        duration = audio.shape[0]
+        target_length = int(round(duration * (sample_rate / float(source_rate))))
+        if target_length <= 1:
+            raise RuntimeError(
+                f"Resampling {source_path} produced too few samples ({target_length})"
+            )
+        positions = np.linspace(0, duration - 1, num=target_length)
+        audio = np.interp(positions, np.arange(duration), audio)
+
+    peak = np.max(np.abs(audio))
+    if peak > 0:
+        audio = audio / peak
+
+    sf.write(target_path, audio.astype(np.float32), sample_rate)
 
 
 def _write_metadata(raw_audio_dir: Path, dataset: DatasetSource) -> None:

@@ -1,29 +1,28 @@
-"""Lightweight DSP helpers used by Project VOICE."""
+"""Audio DSP helpers for Project VOICE."""
 from __future__ import annotations
 
-import librosa
 import numpy as np
+import pyrubberband as pyrb
 from scipy.signal import butter, lfilter
 
 
 def pitch_shift(audio: np.ndarray, sample_rate: int, semitones: float) -> np.ndarray:
-    """Pitch-shift the waveform using `librosa.effects.pitch_shift`."""
+    """Pitch-shift the waveform using Rubber Band Library."""
 
     if np.isclose(semitones, 0.0):
         return audio
-    return librosa.effects.pitch_shift(audio, sr=sample_rate, n_steps=float(semitones))
+    return pyrb.pitch_shift(audio, sample_rate, semitones)
 
 
 def formant_shift(audio: np.ndarray, sample_rate: int, ratio: float) -> np.ndarray:
-    """Approximate a formant lift by combining time-stretch and pitch-shift."""
+    """Approximate formant lift using simple vocal-tract length perturbation."""
 
     if np.isclose(ratio, 1.0):
         return audio
-    stretched = librosa.effects.time_stretch(audio, rate=1.0 / ratio)
-    shifted = librosa.effects.pitch_shift(stretched, sr=sample_rate, n_steps=12 * np.log2(ratio))
-    if len(shifted) < len(audio):
-        shifted = np.pad(shifted, (0, len(audio) - len(shifted)))
-    return shifted[: len(audio)]
+    stretched = pyrb.time_stretch(audio, sample_rate, 1.0 / ratio)
+    stretched = pyrb.pitch_shift(stretched, sample_rate, 12 * np.log2(ratio))
+    min_len = min(len(audio), len(stretched))
+    return stretched[:min_len]
 
 
 def de_ess(audio: np.ndarray, sample_rate: int, amount: float) -> np.ndarray:

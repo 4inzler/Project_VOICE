@@ -8,17 +8,8 @@ from typing import Iterable, List, Optional, Tuple
 
 import numpy as np
 import soundfile as sf
-
-try:
-    import torch
-    from torch.utils.data import Dataset
-except ImportError:  # pragma: no cover - torch is optional for quickstart
-    torch = None
-
-    class Dataset:  # type: ignore[override]
-        """Fallback base class when PyTorch is unavailable."""
-
-        pass
+import torch
+from torch.utils.data import Dataset
 
 from .config import DatasetConfig
 
@@ -49,12 +40,7 @@ class VoiceDataset(Dataset):
     def __len__(self) -> int:  # noqa: D401
         return len(self.segments)
 
-    def __getitem__(self, idx: int) -> Tuple["torch.Tensor", int, SegmentMetadata]:
-        if torch is None:
-            raise RuntimeError(
-                "VoiceDataset requires PyTorch. Install Project VOICE with the 'full' extras: "
-                "`pip install .[full]`"
-            )
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int, SegmentMetadata]:
         meta = self.segments[idx]
         waveform, sr = sf.read(meta.file_path)
         if waveform.ndim > 1:

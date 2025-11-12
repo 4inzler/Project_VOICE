@@ -10,8 +10,8 @@ from typing import List, Optional, Tuple
 class DatasetConfig:
     """Configuration for preparing the single-speaker dataset."""
 
-    raw_audio_dir: Path = Path("data/raw")
-    workspace_dir: Path = Path("data/workspace")
+    raw_audio_dir: Path
+    workspace_dir: Path
     sample_rate: int = 48_000
     target_lufs: float = -16.0
     vad_window_ms: int = 30
@@ -136,12 +136,7 @@ class GuardrailConfig:
 
 @dataclass
 class ProjectVoiceConfig:
-    dataset: DatasetConfig = field(
-        default_factory=lambda: DatasetConfig(
-            raw_audio_dir=Path("data/raw"),
-            workspace_dir=Path("data/workspace"),
-        )
-    )
+    dataset: DatasetConfig = field(default_factory=DatasetConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     pitch: PitchConfig = field(default_factory=PitchConfig)
     losses: LossConfig = field(default_factory=LossConfig)
